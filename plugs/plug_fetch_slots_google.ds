@@ -1,0 +1,125 @@
+// ===================================================================
+// PLUG 2: Fetch Available Time Slots from Google Calendar
+// Purpose: Query Google Calendar API and return free slots for booking
+// ===================================================================
+
+plug FETCH_SLOTS_GOOGLE
+{
+    // Input parameters
+    service_id = input.get("service_id");
+    date = input.get("date");
+    duration_minutes = input.getOrNull("duration_minutes");
+    
+    if (duration_minutes == null)
+    {
+        duration_minutes = 30; // Default 30-minute slots
+    }
+
+    // Get OAuth access token for Google Calendar
+    // Using configured Zoho Connection with Google OAuth
+    access_token = zoho.getOAuthToken("google_calendar_connection");
+    
+    if (access_token == null)
+    {
+        result = map();
+        result.put("status", "error");
+        result.put("message", "OAuth token not available. Please authorize Google Calendar access.");
+        return result;
+    }
+
+    // Parse date and set time range
+    date_obj = zoho.currentDate(date);
+    start_time = date + "T08:00:00Z"; // Business hours start
+    end_time = date + "T18:00:00Z";   // Business hours end
+
+    // Google Calendar API URL
+    google_cal_url = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+    
+    headers = map();
+    headers.put("Authorization", "Bearer " + access_token);
+    headers.put("Content-Type", "application/json");
+
+    query_params = "timeMin=" + start_time + "&timeMax=" + end_time + "&singleEvents=true&orderBy=startTime";
+    
+    try
+    {
+        response = zoho.invokeurl(
+        [
+            "url": google_cal_url + "?" + query_params,
+            "type": "GET",
+            "headers": headers
+        ]);
+        
+        if (response.get("items") == null)
+        {
+            // No events scheduled - all day is free
+            events = list();
+        }
+        else
+        {
+            events = response.get("items");
+        }
+        
+        // Generate available slots
+        available_slots = list();
+        current_time = "08:00";
+        
+        while (current_time < "18:00")
+        {
+            slot_free = true;
+            
+            // Check if slot conflicts with existing events
+            for each event in events
+            {
+                event_start = event.get("start").get("dateTime").substring(11, 16); // Extract HH:MM
+                event_end = event.get("end").get("dateTime").substring(11, 16);
+                
+                if (current_time >= event_start && current_time < event_end)
+                {
+                    slot_free = false;
+                    break;
+                }
+            }
+            
+            if (slot_free)
+            {
+                slot = map();
+                slot.put("time", current_time);
+                slot.put("id", "slot_" + current_time);
+                available_slots.add(slot);
+            }
+            
+            // Increment time by duration
+            current_time = increment_time(current_time, duration_minutes);
+        }
+        
+        result = map();
+        result.put("status", "success");
+        result.put("date", date);
+        result.put("slots", available_slots);
+        result.put("slot_count", available_slots.size());
+        
+        return result;
+    }
+    catch (error)
+    {
+        error_result = map();
+        error_result.put("status", "error");
+        error_result.put("message", "Failed to fetch calendar slots: " + error);
+        return error_result;
+    }
+}
+
+// Helper function to increment time
+function increment_time(time_str as string, minutes as int)
+{
+    time_parts = time_str.split(":");
+    hours = time_parts.get(0).toNumber();
+    mins = time_parts.get(1).toNumber();
+    
+    total_mins = (hours * 60) + mins + minutes;
+    new_hours = (total_mins / 60).round();
+    new_mins = total_mins % 60;
+    
+    return new_hours.toString().padLeft(2, "0") + ":" + new_mins.toString().padLeft(2, "0");
+}

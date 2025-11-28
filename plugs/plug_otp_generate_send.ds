@@ -1,0 +1,103 @@
+// ===================================================================
+// PLUG 1: OTP Generation and SMS Sending
+// Purpose: Generate 6-digit OTP and send via Twilio SMS
+// ===================================================================
+
+plug OTP_GENERATE_SEND
+{
+    // Input parameters
+    phone = input.get("phone");
+    otp_length = input.getOrNull("otpLength");
+    
+    if (otp_length == null)
+    {
+        otp_length = 6;
+    }
+
+    // Generate random OTP
+    otp = zoho.random(otp_length, "0123456789");
+    
+    // Store OTP in temporary memory (you can also use Zoho Sheet for persistence)
+    // OTP Storage: Using Zoho CRM Lead custom field or similar
+    otp_data = map();
+    otp_data.put("otp", otp);
+    otp_data.put("phone", phone);
+    otp_data.put("created_at", zoho.currentTime());
+    otp_data.put("expires_in", 300); // 5 minutes
+    
+    // Send SMS via Twilio API
+    // Note: Replace TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER with your values
+    
+    twilio_url = "https://api.twilio.com/2010-04-01/Accounts/TWILIO_ACCOUNT_SID/Messages.json";
+    
+    sms_body = "Your OTP for appointment booking is: " + otp + ". Valid for 5 minutes. Do not share with anyone.";
+    
+    headers = map();
+    headers.put("Authorization", "Basic " + zoho.base64Encode("TWILIO_ACCOUNT_SID:TWILIO_AUTH_TOKEN"));
+    headers.put("Content-Type", "application/x-www-form-urlencoded");
+    
+    payload = "From=TWILIO_PHONE_NUMBER&To=" + phone + "&Body=" + zoho.urlEncode(sms_body);
+    
+    try
+    {
+        response = zoho.invokeurl(
+        [
+            "url": twilio_url,
+            "type": "POST",
+            "headers": headers,
+            "parameters": payload,
+            "connection": "twilio_connection" // Use configured Zoho Connection
+        ]);
+        
+        result = map();
+        result.put("status", "success");
+        result.put("message", "OTP sent successfully");
+        result.put("otp", otp);
+        result.put("expires_in", 300);
+        result.put("phone", phone);
+        
+        return result;
+    }
+    catch (error)
+    {
+        error_result = map();
+        error_result.put("status", "error");
+        error_result.put("message", "Failed to send OTP: " + error);
+        return error_result;
+    }
+}
+
+plug OTP_VERIFY
+{
+    // Input parameters
+    phone = input.get("phone");
+    otp_entered = input.get("otp_entered");
+    
+    // Retrieve stored OTP (from your storage - CRM, Sheet, etc.)
+    // This is simplified; in production, fetch from persistent storage
+    stored_otp = context.get("otp_" + phone); // Example: stored in bot context
+    
+    if (stored_otp == null)
+    {
+        result = map();
+        result.put("status", "error");
+        result.put("message", "OTP expired or not found");
+        return result;
+    }
+    
+    if (stored_otp == otp_entered)
+    {
+        result = map();
+        result.put("status", "success");
+        result.put("message", "OTP verified successfully");
+        result.put("phone", phone);
+        return result;
+    }
+    else
+    {
+        result = map();
+        result.put("status", "error");
+        result.put("message", "OTP mismatch");
+        return result;
+    }
+}

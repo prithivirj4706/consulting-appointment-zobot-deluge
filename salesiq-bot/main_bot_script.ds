@@ -1,0 +1,114 @@
+// ===================================================================
+// MAIN BOT SCRIPT - Consultation Appointment Booking Zobot
+// Platform: Zoho SalesIQ
+// Language: Deluge
+// Purpose: Main handler for bot context and message routing
+// ===================================================================
+
+// Context Handler - Called when user starts chat
+handler context
+{
+    if (context.get("type") == "init")
+    {
+        resp = map();
+        resp.put("action", "reply");
+        resp.put("replies", {
+            "👋 Welcome to Consultation Appointment Booking!",
+            "I can help you book, reschedule, or cancel appointments.",
+            "What would you like to do today?"
+        });
+
+        // Main menu suggestions
+        suggestions = list();
+        suggestions.add("📅 Book an appointment");
+        suggestions.add("🔄 Reschedule appointment");
+        suggestions.add("❌ Cancel appointment");
+
+        resp.put("suggestions", suggestions);
+
+        // Initialize bot context
+        context.put("stage", "MAIN_MENU");
+        context.put("session_id", zoho.random(1000000));
+        context.put("start_time", zoho.currentTime());
+
+        return resp;
+    }
+}
+
+// Message Handler - Main router for all user messages
+handler message
+{
+    user_msg = input.get("text");
+    stage = context.get("stage");
+
+    // Main menu routing
+    if (stage == "MAIN_MENU")
+    {
+        if (user_msg.contains("Book"))
+        {
+            context.put("stage", "BOOK_SERVICE_SELECTION");
+            return show_services(context);
+        }
+        else if (user_msg.contains("Reschedule"))
+        {
+            context.put("stage", "RESCHEDULE_START");
+            return reschedule_start(context);
+        }
+        else if (user_msg.contains("Cancel"))
+        {
+            context.put("stage", "CANCEL_START");
+            return cancel_start(context);
+        }
+        else
+        {
+            resp = map();
+            resp.put("action", "reply");
+            resp.put("replies", {"Please use one of the suggested options above.
+            resp.put("suggestions", {"📅 Book an appointment", "🔄 Reschedule appointment", "❌ Cancel appointment"});
+            return resp;
+        }
+    }
+
+    // Fallback response
+    resp = map();
+    resp.put("action", "reply");
+    resp.put("replies", {"I'm here to help with appointments. Please choose an option."]);
+    return resp;
+}
+
+// Show available services
+function show_services(context as map)
+{
+    resp = map();
+    resp.put("action", "reply");
+    resp.put("replies", {"Please select a service type from below:"});
+    
+    suggestions = list();
+    suggestions.add("General Consultation");
+    suggestions.add("Specialist Consultation");
+    suggestions.add("Dental Checkup");
+    suggestions.add("Health Checkup");
+    
+    resp.put("suggestions", suggestions);
+    return resp;
+}
+
+// Reschedule appointment start
+function reschedule_start(context as map)
+{
+    resp = map();
+    resp.put("action", "ask_input");
+    resp.put("input_type", "email");
+    resp.put("question", "Please enter your email to find your appointments.");
+    return resp;
+}
+
+// Cancel appointment start
+function cancel_start(context as map)
+{
+    resp = map();
+    resp.put("action", "ask_input");
+    resp.put("input_type", "email");
+    resp.put("question", "Please enter your email to find appointments to cancel.");
+    return resp;
+}
